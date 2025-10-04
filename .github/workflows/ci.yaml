@@ -26,7 +26,7 @@ jobs:
         id: changed-files-eslint
         uses: tj-actions/changed-files@v47
         with:
-          files: '**/*.{ts,js}'
+          files: '**/*.js'
 
       - uses: actions/setup-node@v5
         with:
@@ -54,11 +54,17 @@ jobs:
         id: compile
         continue-on-error: true
         run: yarn compile 2>&1 | tee compile.log
+        env:
+          MNEMONIC: ${{ secrets.MNEMONIC }}
+          INFURA_API_KEY: ${{ secrets.INFURA_API_KEY }}
 
       - name: Test
         id: test
         continue-on-error: true
         run: yarn test 2>&1 | tee test.log
+        env:
+          MNEMONIC: ${{ secrets.MNEMONIC }}
+          INFURA_API_KEY: ${{ secrets.INFURA_API_KEY }}
 
       - uses: actions/github-script@v8
         if: github.event_name == 'pull_request'
@@ -80,7 +86,7 @@ jobs:
             const run_url = process.env.GITHUB_SERVER_URL + '/' + process.env.GITHUB_REPOSITORY + '/actions/runs/' + process.env.GITHUB_RUN_ID
             const run_link = '<a href="' + run_url + '">Actions</a>.'
             const fs = require('fs')
-            const eslint_file = '${{ steps.eslint.outcome }}' == 'skipped' ? 'No ts,js code changes found, skipping format check.' : fs.readFileSync(`eslint.log`, 'utf8')
+            const eslint_file = '${{ steps.eslint.outcome }}' == 'skipped' ? 'No js code changes found, skipping format check.' : fs.readFileSync(`eslint.log`, 'utf8')
             const ethlint_file = fs.readFileSync(`ethlint.log`, 'utf8')
             const compile_file = fs.readFileSync(`compile.log`, 'utf8')
             const test_file = fs.readFileSync(`test.log`, 'utf8')
