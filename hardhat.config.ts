@@ -24,11 +24,12 @@ const config: HardhatUserConfig = {
         trader: 2,
     },
     networks: {
-        goerli: { accounts, ...getRemoteNetworkConfig("goerli") },
-        kovan: { accounts, ...getRemoteNetworkConfig("kovan") },
-        rinkeby: { accounts, ...getRemoteNetworkConfig("rinkeby") },
-        ropsten: { accounts, ...getRemoteNetworkConfig("ropsten") },
-        matic: { accounts, ...getRemoteNetworkConfig("matic"), gasPrice: 8000000000 },
+        sepolia: { accounts, ...getRemoteNetworkConfig("sepolia") },
+        // goerli: { accounts, ...getRemoteNetworkConfig("goerli") },
+        // kovan: { accounts, ...getRemoteNetworkConfig("kovan") },
+        // rinkeby: { accounts, ...getRemoteNetworkConfig("rinkeby") },
+        // ropsten: { accounts, ...getRemoteNetworkConfig("ropsten") },
+        // matic: { accounts, ...getRemoteNetworkConfig("matic"), gasPrice: 8000000000 },
     },
     paths: {
         artifacts: "./artifacts",
