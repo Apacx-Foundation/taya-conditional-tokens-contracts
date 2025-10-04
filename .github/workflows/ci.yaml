@@ -1,0 +1,163 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches:
+      - develop
+      - main
+
+defaults:
+  run:
+    shell: bash
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Get changed files
+        id: changed-files-eslint
+        uses: tj-actions/changed-files@v47
+        with:
+          files: '**/*.js'
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: 'yarn'
+          cache-dependency-path: yarn.lock
+      - run: yarn --frozen-lockfile
+
+      - name: Eslint
+        id: eslint
+        if: steps.changed-files-eslint.outputs.all_changed_files != ''
+        continue-on-error: true
+        run: |-
+          yarn eslint \
+            --config ./.eslintrc.js \
+            --ignore-path ./.eslintignore \
+            ${{ steps.changed-files-eslint.outputs.all_changed_files }} 2>&1 | tee eslint.log
+
+      - name: Ethlint
+        id: ethlint
+        continue-on-error: true
+        run: yarn lint:sol 2>&1 | tee ethlint.log
+
+      - name: Compile
+        id: compile
+        continue-on-error: true
+        run: yarn compile 2>&1 | tee compile.log
+        env:
+          MNEMONIC: ${{ secrets.MNEMONIC }}
+          INFURA_API_KEY: ${{ secrets.INFURA_API_KEY }}
+
+      - name: Test
+        id: test
+        continue-on-error: true
+        run: yarn test 2>&1 | tee test.log
+        env:
+          MNEMONIC: ${{ secrets.MNEMONIC }}
+          INFURA_API_KEY: ${{ secrets.INFURA_API_KEY }}
+
+      - uses: actions/github-script@v8
+        if: github.event_name == 'pull_request'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            // 1. Retrieve existing bot comments for the PR
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            })
+            const botComment = comments.find(comment => {
+              return comment.user.id === 41898282 && comment.body.includes(`# CI 📍\`${process.env.GITHUB_REPOSITORY}\``)
+            })
+
+
+            // 2. Prepare format of the comment
+            const run_url = process.env.GITHUB_SERVER_URL + '/' + process.env.GITHUB_REPOSITORY + '/actions/runs/' + process.env.GITHUB_RUN_ID
+            const run_link = '<a href="' + run_url + '">Actions</a>.'
+            const fs = require('fs')
+            const eslint_file = '${{ steps.eslint.outcome }}' == 'skipped' ? 'No js code changes found, skipping format check.' : fs.readFileSync(`eslint.log`, 'utf8')
+            const ethlint_file = fs.readFileSync(`ethlint.log`, 'utf8')
+            const compile_file = fs.readFileSync(`compile.log`, 'utf8')
+            const test_file = fs.readFileSync(`test.log`, 'utf8')
+            const output = `# CI 📍\`${process.env.GITHUB_REPOSITORY}\`
+            #### Eslint 🎨\`${{ steps.eslint.outcome }}\`
+            <details><summary>Eslint Output</summary>
+
+            \`\`\`\n
+            ${eslint_file}
+            \`\`\`
+
+            </details>
+
+            #### Ethlint 🧹\`${{ steps.ethlint.outcome }}\`
+            <details><summary>Ethlint Output</summary>
+
+            \`\`\`\n
+            ${ethlint_file}
+            \`\`\`
+
+            </details>
+
+            #### Compile 🧪\`${{ steps.compile.outcome }}\`
+            <details><summary>Compile Output</summary>
+
+            \`\`\`\n
+            ${compile_file}
+            \`\`\`
+
+            </details>
+
+            #### Test 🧪\`${{ steps.test.outcome }}\`
+            <details><summary>Test Output</summary>
+
+            \`\`\`\n
+            ${test_file}
+            \`\`\`
+
+            </details>
+
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Workflow: \`${{ github.workflow }}\`*`;
+
+            // 3. If we have a comment, update it, otherwise create a new one
+            if (botComment) {
+              github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: output
+              })
+            } else {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: output
+              })
+            }
+
+      - name: Check if any step failed
+        run: |
+          if [[ "${{ steps.eslint.outcome }}" == "failure" \
+            || "${{ steps.ethlint.outcome }}" == "failure" \
+            || "${{ steps.compile.outcome }}" == "failure" \
+            || "${{ steps.test.outcome }}" == "failure" ]];
+          then
+            echo "❌ One or more checks failed:"
+            [[ "${{ steps.eslint.outcome }}" == "failure" ]] && echo "  - Eslint"
+            [[ "${{ steps.ethlint.outcome }}" == "failure" ]] && echo "  - Ethlint"
+            [[ "${{ steps.compile.outcome }}" == "failure" ]] && echo "  - Compile"
+            [[ "${{ steps.test.outcome }}" == "failure" ]] && echo "  - Test"
+            exit 1
+          fi
+          echo "✅ All checks passed successfully!"
